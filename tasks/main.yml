@@ -1,0 +1,91 @@
+---
+- name: ensure geoip tmpdir exists
+  file:
+    name: /var/tmp/geoip
+    state: directory
+
+- name: download freegeoip
+  get_url:
+    url: https://github.com/fiorix/freegeoip/releases/download/v3.1.5/freegeoip-3.1.5-linux-amd64.tar.gz
+    dest: /var/tmp/geoip/freegeoip.tar.gz
+
+- name: extract freegeoip
+  unarchive:
+    src: /var/tmp/geoip/freegeoip.tar.gz
+    dest: /var/tmp/geoip
+    remote_src: true
+
+- name: get local working dir
+  shell: ls -d /var/tmp/geoip/*/
+  register: geoip_src
+
+- name: move geoip software location
+  command: mv -fT {{ geoip_src.stdout }} /opt/freegeoip
+  args:
+    creates: /opt/freegeoip
+
+- name: setup geoip startup script
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dst }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  with_items:
+    - src: start_geoip.sh
+      dst: /opt/freegeoip/start_geoip.sh
+      mode: 'u=rwx,g=rx,o=rx'
+
+- name: fixing permissions
+  file:
+    path: "{{ item.dst }}"
+    owner: root
+    group: root
+    recurse: "{{ item.recurse }}"
+  with_items:
+    - { dst: /opt/freegeoip , recurse: true }
+
+- name: clean up geoip tmpdir
+  file:
+    name: /var/tmp/geoip
+    state: absent
+
+- name: setup geoip init scripts for EL6
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dst }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  with_items:
+    - src: init+geoip.conf
+      dst: /etc/init/geoip.conf
+      mode: 'u=rw,g=r,o=r'
+  when:
+    - ansible_distribution_major_version == '6'
+
+- name: configure and start geoip init for EL6
+  shell: "{{ item.command }}"
+  with_items:
+    - command: initctl reload-configuration
+    - command: initctl start geoip
+  when:
+    - ansible_distribution_major_version == '6'
+  failed_when: false
+
+- name: configure geoip systemd service for EL7
+  copy:
+    src: geoip.service
+    dest: /usr/lib/systemd/system/geoip.service
+    owner: root
+    group: root
+  when:
+    - ansible_distribution_major_version == '7'
+
+- name: start geoip service
+  service:
+    name: geoip
+    state: started
+    enabled: true
+  when:
+    - ansible_distribution_major_version == '7'

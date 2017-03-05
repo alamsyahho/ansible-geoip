@@ -1,0 +1,10 @@
+[Unit]
+Description=geoip - Geoip process control system for UNIX
+Documentation=https://freegeoip.net
+After=rc-local.service
+
+[Service]
+ExecStart=/opt/freegeoip/start_geoip.sh
+
+[Install]
+WantedBy=multi-user.target
